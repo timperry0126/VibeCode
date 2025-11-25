@@ -5,9 +5,9 @@ import { FormEvent, Fragment, useMemo, useState } from "react";
 
 import { KANTO_POKEMON } from "@/data/kantoPokemon";
 
-const MIN_POKEMON_ID = 1;
-const MAX_POKEMON_ID = 1025;
-const TOTAL_POKEMON_COUNT = MAX_POKEMON_ID - MIN_POKEMON_ID + 1;
+const MIN_POKEMON_ID = 1;     // Minimum Pokémon ID
+const MAX_POKEMON_ID = 1025;  // Maximum Pokémon ID
+const TOTAL_POKEMON_COUNT = MAX_POKEMON_ID - MIN_POKEMON_ID + 1; // Total number of Pokémon as of 11/24/2025
 
 type PokemonType = {
   slot: number;
@@ -46,14 +46,18 @@ type Pokemon = {
   species: PokemonSpecies;
 };
 
+// Get the sprite URL from the Pokémon sprites object
 const getSpriteUrl = (sprites: PokemonSprites) =>
   sprites.other?.["official-artwork"]?.front_default ?? sprites.front_default ?? "";
 
+// Format the Pokémon name to capitalize the first letter
 const getFormattedName = (name: string) => name.charAt(0).toUpperCase() + name.slice(1);
 
+// Format the measurement to the nearest decimal place
 const formatMeasurement = (value: number, divisor: number, unit: string) =>
   `${(value / divisor).toFixed(1)} ${unit}`;
 
+// Format the Pokémon ID to 4 digits
 const formatDexNumber = (id: number) => id.toString().padStart(4, "0");
 
 type EvolutionChainLink = {
@@ -74,15 +78,18 @@ type EvolutionStage = {
   species: EvolutionStageSpecies[];
 };
 
+// Extract the ID from the URL
 const extractIdFromUrl = (url: string) => {
   const segments = url.split("/").filter(Boolean);
   const id = Number(segments[segments.length - 1]);
   return Number.isFinite(id) ? id : null;
 };
 
+// Get the official artwork URL for the Pokémon
 const getOfficialArtworkUrl = (id: number) =>
   `https://raw.githubusercontent.com/PokeAPI/sprites/master/other/official-artwork/${id}.png`;
 
+// Build the evolution stages for the Pokémon
 const buildEvolutionStages = (chain: EvolutionChainLink): EvolutionStage[] => {
   const stages: EvolutionStage[] = [];
 
@@ -109,6 +116,7 @@ const buildEvolutionStages = (chain: EvolutionChainLink): EvolutionStage[] => {
   return stages.filter((stage) => stage.species.length > 0);
 };
 
+// Hydrate the evolution stages by fetching the artwork for each Pokémon
 const hydrateEvolutionStages = async (stages: EvolutionStage[]) => {
   const hydratedStages = await Promise.all(
     stages.map(async (stage) => {
@@ -144,15 +152,16 @@ const hydrateEvolutionStages = async (stages: EvolutionStage[]) => {
 };
 
 export default function Home() {
-  const [query, setQuery] = useState("");
-  const [pokemon, setPokemon] = useState<Pokemon | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [evolutionStages, setEvolutionStages] = useState<EvolutionStage[] | null>(null);
+  const [query, setQuery] = useState(""); // The query for the Pokémon search
+  const [pokemon, setPokemon] = useState<Pokemon | null>(null); // The Pokémon data
+  const [error, setError] = useState<string | null>(null); // The error message
+  const [isLoading, setIsLoading] = useState(false); // Whether the Pokémon data is loading
+  const [evolutionStages, setEvolutionStages] = useState<EvolutionStage[] | null>(null); // The evolution stages for the Pokémon
 
-  const spriteUrl = useMemo(() => (pokemon ? getSpriteUrl(pokemon.sprites) : null), [pokemon]);
-  const cryUrl = useMemo(() => pokemon?.cries.latest ?? null, [pokemon]);
+  const spriteUrl = useMemo(() => (pokemon ? getSpriteUrl(pokemon.sprites) : null), [pokemon]); // The sprite URL for the Pokémon
+  const cryUrl = useMemo(() => pokemon?.cries.latest ?? null, [pokemon]); // The cry URL for the Pokémon
 
+  // Filter the suggestions for the Pokémon search
   const filteredSuggestions = useMemo(() => {
     const normalized = query.trim().toLowerCase();
 
@@ -163,6 +172,7 @@ export default function Home() {
     return KANTO_POKEMON.filter(({ name }) => name.includes(normalized)).slice(0, 6);
   }, [query]);
 
+  // Fetch the evolution stages for the Pokémon
   const fetchEvolutionStages = async (speciesUrl: string, currentPokemonId: number) => {
     try {
       const speciesResponse = await fetch(speciesUrl);
@@ -201,6 +211,7 @@ export default function Home() {
     }
   };
 
+  // Fetch the Pokémon data
   const fetchPokemon = async (identifier: string | number) => {
     const normalized =
       typeof identifier === "number"
@@ -208,7 +219,7 @@ export default function Home() {
         : identifier.trim().toLowerCase();
 
     if (!normalized) {
-      setError("Enter a Pokémon name to search.");
+      setError("Enter a Pokémon name or ID to search.");
       setPokemon(null);
       setEvolutionStages(null);
       return;
@@ -237,23 +248,26 @@ export default function Home() {
       }
     } catch {
       setPokemon(null);
-      setError("No Pokémon found with that name. Try another search.");
+      setError("No Pokémon found with that name or ID. Try another search.");
       setEvolutionStages([]);
     } finally {
       setIsLoading(false);
     }
   };
 
+  // Handle the search for the Pokémon
   const handleSearch = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     await fetchPokemon(query);
   };
 
+  // Handle the suggestion select for the Pokémon
   const handleSuggestionSelect = (name: string, id?: number) => {
     setQuery(getFormattedName(name));
     void fetchPokemon(id ?? name);
   };
 
+  // Handle the navigation for the Pokémon
   const handleNavigate = (offset: number) => {
     if (!pokemon) {
       return;
@@ -278,11 +292,10 @@ export default function Home() {
             Pokédex Search
           </p>
           <h1 className="text-4xl font-bold leading-tight text-white md:text-5xl">
-            Find Pokémon by their name
+            Find Pokémon by their name or ID
           </h1>
           <p className="max-w-xl text-base text-white/80">
-            Search the PokéAPI for any Pokémon using its name. We&apos;ll fetch dex stats,
-            typing, and artwork for you to explore. Powered by the{" "}
+            Powered by the{" "}
             <a
               className="font-semibold text-white underline-offset-4 hover:underline"
               href="https://pokeapi.co/api/v2"
@@ -300,14 +313,13 @@ export default function Home() {
           className="flex w-full flex-col gap-4 rounded-2xl border-[3px] border-white bg-black p-6 shadow-inner shadow-[inset_0_0_30px_rgba(220,10,45,0.35)]"
         >
           <label className="flex flex-col gap-2 text-sm font-medium text-white">
-            Pokémon name
+            Pokémon name or ID
             <div className="flex flex-col gap-3 md:flex-row">
               <input
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="e.g. pikachu"
                 className="flex-1 rounded-xl border border-white/40 bg-black px-4 py-3 text-base text-white placeholder:text-white/60 outline-none transition focus:border-white focus:ring-2 focus:ring-white/60"
-                aria-label="Pokémon name"
                 autoComplete="off"
                 spellCheck="false"
               />
