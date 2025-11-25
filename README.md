@@ -52,3 +52,11 @@ npm run test
 ```bash
 npm run test:watch
 ```
+
+## Slideshow
+
+https://docs.google.com/presentation/d/1gcxzgxgn-zWBV4a7rdJZm6-F7gMNBCNzhlPEbLUxX3I/edit?usp=sharing
+
+## Feedback
+
+https://docs.google.com/document/d/1K_7mInI8xd57kWPmlfec_3J-yEL9ChYnomjjY1gQ5yg/edit?usp=sharing
