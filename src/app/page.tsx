@@ -143,6 +143,16 @@ const hydrateEvolutionStages = async (stages: EvolutionStage[]) => {
   return hydratedStages;
 };
 
+/**
+ * Top-level client React component that provides an interactive Pokédex search UI.
+ *
+ * Renders a search form with suggestions, displays Pokémon artwork, dex information,
+ * typings, measurements, latest cry audio (when available), and a hydrated evolution chain.
+ * Includes next/previous navigation that cycles through a defined Pokémon ID range and
+ * gracefully handles loading and error states.
+ *
+ * @returns The component's JSX element representing the Pokédex UI.
+ */
 export default function Home() {
   const [query, setQuery] = useState("");
   const [pokemon, setPokemon] = useState<Pokemon | null>(null);
@@ -523,4 +533,3 @@ export default function Home() {
     </div>
   );
 }
-
