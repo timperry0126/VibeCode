@@ -3,6 +3,8 @@
 import Image from "next/image";
 import { FormEvent, useMemo, useState } from "react";
 
+import { KANTO_POKEMON } from "@/data/kantoPokemon";
+
 type PokemonType = {
   slot: number;
   type: {
@@ -36,6 +38,8 @@ const getFormattedName = (name: string) => name.charAt(0).toUpperCase() + name.s
 const formatMeasurement = (value: number, divisor: number, unit: string) =>
   `${(value / divisor).toFixed(1)} ${unit}`;
 
+const formatDexNumber = (id: number) => id.toString().padStart(4, "0");
+
 export default function Home() {
   const [query, setQuery] = useState("");
   const [pokemon, setPokemon] = useState<Pokemon | null>(null);
@@ -44,11 +48,20 @@ export default function Home() {
 
   const spriteUrl = useMemo(() => (pokemon ? getSpriteUrl(pokemon.sprites) : null), [pokemon]);
 
-  const handleSearch = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const target = query.trim().toLowerCase();
+  const filteredSuggestions = useMemo(() => {
+    const normalized = query.trim().toLowerCase();
 
-    if (!target) {
+    if (!normalized) {
+      return KANTO_POKEMON.slice(0, 6);
+    }
+
+    return KANTO_POKEMON.filter(({ name }) => name.includes(normalized)).slice(0, 6);
+  }, [query]);
+
+  const fetchPokemon = async (name: string) => {
+    const normalized = name.trim().toLowerCase();
+
+    if (!normalized) {
       setError("Enter a Pokémon name to search.");
       setPokemon(null);
       return;
@@ -58,7 +71,7 @@ export default function Home() {
     setError(null);
 
     try {
-      const response = await fetch(`https://pokeapi.co/api/v2/pokemon/${target}`);
+      const response = await fetch(`https://pokeapi.co/api/v2/pokemon/${normalized}`);
 
       if (!response.ok) {
         throw new Error("Pokémon not found");
@@ -72,6 +85,16 @@ export default function Home() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleSearch = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    await fetchPokemon(query);
+  };
+
+  const handleSuggestionSelect = (name: string) => {
+    setQuery(getFormattedName(name));
+    void fetchPokemon(name);
   };
 
   return (
@@ -130,6 +153,29 @@ export default function Home() {
               {error}
             </p>
           )}
+
+          {filteredSuggestions.length > 0 && (
+            <div className="rounded-2xl border border-white/20 bg-black/80 p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.3em] text-white/40">
+                Suggestions
+              </p>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                {filteredSuggestions.map((suggestion) => (
+                  <button
+                    type="button"
+                    key={suggestion.id}
+                    onClick={() => handleSuggestionSelect(suggestion.name)}
+                    className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-semibold text-white transition hover:border-white/40 hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
+                  >
+                    <span>{getFormattedName(suggestion.name)}</span>
+                    <span className="text-xs font-mono text-white/60">
+                      #{formatDexNumber(suggestion.id)}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </form>
 
         <section className="min-h-[220px] rounded-2xl border-[3px] border-white bg-black p-6 shadow-inner shadow-red-900/40">
@@ -172,7 +218,7 @@ export default function Home() {
               <div className="flex flex-col gap-4">
                 <header className="space-y-1">
                   <p className="text-sm uppercase tracking-[0.4em] text-white/70">
-                    #{pokemon.id.toString().padStart(4, "0")}
+                    #{formatDexNumber(pokemon.id)}
                   </p>
                   <h2 className="text-3xl font-bold">{getFormattedName(pokemon.name)}</h2>
                 </header>
