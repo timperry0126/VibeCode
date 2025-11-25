@@ -5,6 +5,10 @@ import { FormEvent, Fragment, useMemo, useState } from "react";
 
 import { KANTO_POKEMON } from "@/data/kantoPokemon";
 
+const MIN_POKEMON_ID = 1;
+const MAX_POKEMON_ID = 1025;
+const TOTAL_POKEMON_COUNT = MAX_POKEMON_ID - MIN_POKEMON_ID + 1;
+
 type PokemonType = {
   slot: number;
   type: {
@@ -171,7 +175,7 @@ export default function Home() {
       const chainUrl: string | undefined = speciesData.evolution_chain?.url;
 
       if (!chainUrl) {
-        return null;
+        return [];
       }
 
       const chainResponse = await fetch(chainUrl);
@@ -197,8 +201,11 @@ export default function Home() {
     }
   };
 
-  const fetchPokemon = async (name: string) => {
-    const normalized = name.trim().toLowerCase();
+  const fetchPokemon = async (identifier: string | number) => {
+    const normalized =
+      typeof identifier === "number"
+        ? identifier.toString()
+        : identifier.trim().toLowerCase();
 
     if (!normalized) {
       setError("Enter a Pokémon name to search.");
@@ -220,6 +227,7 @@ export default function Home() {
 
       const data: Pokemon = await response.json();
       setPokemon(data);
+      setQuery(getFormattedName(data.name));
 
       if (data.species?.url) {
         const stages = await fetchEvolutionStages(data.species.url, data.id);
@@ -241,14 +249,30 @@ export default function Home() {
     await fetchPokemon(query);
   };
 
-  const handleSuggestionSelect = (name: string) => {
+  const handleSuggestionSelect = (name: string, id?: number) => {
     setQuery(getFormattedName(name));
-    void fetchPokemon(name);
+    void fetchPokemon(id ?? name);
+  };
+
+  const handleNavigate = (offset: number) => {
+    if (!pokemon) {
+      return;
+    }
+
+    const targetId =
+      ((pokemon.id - MIN_POKEMON_ID + offset + TOTAL_POKEMON_COUNT) % TOTAL_POKEMON_COUNT) +
+      MIN_POKEMON_ID;
+
+    void fetchPokemon(targetId);
   };
 
   return (
-    <div className="flex min-h-screen justify-center bg-white px-4 py-16 text-slate-900">
-      <main className="flex w-full max-w-3xl flex-col gap-10 overflow-hidden rounded-3xl border-[3px] border-black bg-red-600 p-10 text-white shadow-2xl shadow-red-900/40">
+    <div
+      className="relative flex min-h-screen justify-center overflow-hidden bg-black bg-cover bg-center bg-no-repeat px-4 py-16 text-slate-900"
+      style={{ backgroundImage: "url('/background.png')" }}
+    >
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" aria-hidden="true" />
+      <main className="relative z-10 flex w-full max-w-3xl flex-col gap-10 overflow-hidden rounded-3xl border-[3px] border-black bg-[#dc0a2d] p-10 text-white shadow-[0_45px_80px_-20px_rgba(220,10,45,0.55)]">
         <section className="flex flex-col gap-3">
           <p className="text-sm font-semibold uppercase tracking-[0.2em] text-white/70">
             Pokédex Search
@@ -273,7 +297,7 @@ export default function Home() {
 
         <form
           onSubmit={handleSearch}
-          className="flex w-full flex-col gap-4 rounded-2xl border-[3px] border-white bg-black p-6 shadow-inner shadow-red-900/40"
+          className="flex w-full flex-col gap-4 rounded-2xl border-[3px] border-white bg-black p-6 shadow-inner shadow-[inset_0_0_30px_rgba(220,10,45,0.35)]"
         >
           <label className="flex flex-col gap-2 text-sm font-medium text-white">
             Pokémon name
@@ -289,7 +313,7 @@ export default function Home() {
               />
               <button
                 type="submit"
-                className="inline-flex items-center justify-center rounded-xl bg-white px-6 py-3 text-base font-semibold text-red-600 transition hover:bg-red-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-red-600 disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex items-center justify-center rounded-xl bg-white px-6 py-3 text-base font-semibold text-[#dc0a2d] transition hover:bg-[#dc0a2d]/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#dc0a2d] disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={isLoading}
               >
                 {isLoading ? "Searching..." : "Search"}
@@ -327,7 +351,7 @@ export default function Home() {
           )}
         </form>
 
-        <section className="flex w-full flex-1 flex-col overflow-hidden rounded-2xl border-[3px] border-white bg-black p-6 shadow-inner shadow-red-900/40">
+        <section className="flex w-full flex-1 flex-col overflow-hidden rounded-2xl border-[3px] border-white bg-black p-6 shadow-inner shadow-[inset_0_0_30px_rgba(220,10,45,0.35)]">
           {isLoading && (
             <div className="flex h-full items-center justify-center text-white/80">
               Fetching Pokémon data...
@@ -347,6 +371,26 @@ export default function Home() {
 
           {!isLoading && pokemon && (
             <article className="grid w-full flex-1 content-start gap-6 md:grid-cols-[200px_1fr] md:items-start">
+              <div className="flex w-full items-center justify-between gap-4 md:col-span-2">
+                <button
+                  type="button"
+                  onClick={() => handleNavigate(-1)}
+                  className="inline-flex items-center gap-2 rounded-full border border-white/30 bg-white/10 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-black disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={isLoading}
+                  aria-label="View previous Pokémon"
+                >
+                  ← Previous
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleNavigate(1)}
+                  className="inline-flex items-center gap-2 rounded-full border border-white/30 bg-white/10 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-black disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={isLoading}
+                  aria-label="View next Pokémon"
+                >
+                  Next →
+                </button>
+              </div>
               {spriteUrl ? (
                 <div className="relative h-48 w-48 overflow-hidden rounded-3xl border border-white/10 bg-slate-900/60 md:self-start">
                   <Image
@@ -431,7 +475,9 @@ export default function Home() {
                                     <button
                                       type="button"
                                       key={stageSpecies.id}
-                                      onClick={() => handleSuggestionSelect(stageSpecies.name)}
+                                      onClick={() =>
+                                        handleSuggestionSelect(stageSpecies.name, stageSpecies.id)
+                                      }
                                       className="group flex w-36 flex-col items-center gap-2 rounded-2xl border border-white/15 bg-white/5 px-4 py-3 text-center text-white transition hover:border-white/40 hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
                                     >
                                       <div className="relative h-20 w-20 overflow-hidden rounded-xl border border-white/10 bg-black/60">
