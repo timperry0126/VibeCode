@@ -219,7 +219,7 @@ export default function Home() {
         : identifier.trim().toLowerCase();
 
     if (!normalized) {
-      setError("Enter a Pokémon name to search.");
+      setError("Enter a Pokémon name or ID to search.");
       setPokemon(null);
       setEvolutionStages(null);
       return;
@@ -248,7 +248,7 @@ export default function Home() {
       }
     } catch {
       setPokemon(null);
-      setError("No Pokémon found with that name. Try another search.");
+      setError("No Pokémon found with that name or ID. Try another search.");
       setEvolutionStages([]);
     } finally {
       setIsLoading(false);
@@ -320,7 +320,6 @@ export default function Home() {
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="e.g. pikachu"
                 className="flex-1 rounded-xl border border-white/40 bg-black px-4 py-3 text-base text-white placeholder:text-white/60 outline-none transition focus:border-white focus:ring-2 focus:ring-white/60"
-                aria-label="Pokémon name"
                 autoComplete="off"
                 spellCheck="false"
               />
