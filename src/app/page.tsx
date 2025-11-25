@@ -1,7 +1,7 @@
 'use client';
 
 import Image from "next/image";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, Fragment, useMemo, useState } from "react";
 
 import { KANTO_POKEMON } from "@/data/kantoPokemon";
 
@@ -21,6 +21,16 @@ type PokemonSprites = {
   };
 };
 
+type PokemonCries = {
+  latest: string | null;
+  legacy?: string | null;
+};
+
+type PokemonSpecies = {
+  name: string;
+  url: string;
+};
+
 type Pokemon = {
   id: number;
   name: string;
@@ -28,6 +38,8 @@ type Pokemon = {
   weight: number;
   sprites: PokemonSprites;
   types: PokemonType[];
+  cries: PokemonCries;
+  species: PokemonSpecies;
 };
 
 const getSpriteUrl = (sprites: PokemonSprites) =>
@@ -40,13 +52,102 @@ const formatMeasurement = (value: number, divisor: number, unit: string) =>
 
 const formatDexNumber = (id: number) => id.toString().padStart(4, "0");
 
+type EvolutionChainLink = {
+  species: {
+    name: string;
+    url: string;
+  };
+  evolves_to: EvolutionChainLink[];
+};
+
+type EvolutionStageSpecies = {
+  id: number;
+  name: string;
+  artwork: string;
+};
+
+type EvolutionStage = {
+  species: EvolutionStageSpecies[];
+};
+
+const extractIdFromUrl = (url: string) => {
+  const segments = url.split("/").filter(Boolean);
+  const id = Number(segments[segments.length - 1]);
+  return Number.isFinite(id) ? id : null;
+};
+
+const getOfficialArtworkUrl = (id: number) =>
+  `https://raw.githubusercontent.com/PokeAPI/sprites/master/other/official-artwork/${id}.png`;
+
+const buildEvolutionStages = (chain: EvolutionChainLink): EvolutionStage[] => {
+  const stages: EvolutionStage[] = [];
+
+  const traverse = (node: EvolutionChainLink, level: number) => {
+    if (!stages[level]) {
+      stages[level] = { species: [] };
+    }
+
+    const speciesId = extractIdFromUrl(node.species.url);
+
+    if (speciesId !== null) {
+      stages[level]!.species.push({
+        id: speciesId,
+        name: node.species.name,
+        artwork: getOfficialArtworkUrl(speciesId),
+      });
+    }
+
+    node.evolves_to.forEach((child) => traverse(child, level + 1));
+  };
+
+  traverse(chain, 0);
+
+  return stages.filter((stage) => stage.species.length > 0);
+};
+
+const hydrateEvolutionStages = async (stages: EvolutionStage[]) => {
+  const hydratedStages = await Promise.all(
+    stages.map(async (stage) => {
+      const speciesWithArtwork = await Promise.all(
+        stage.species.map(async (species) => {
+          try {
+            const response = await fetch(`https://pokeapi.co/api/v2/pokemon/${species.id}`);
+
+            if (!response.ok) {
+              throw new Error("Unable to fetch evolution Pokémon");
+            }
+
+            const details: { sprites: PokemonSprites } = await response.json();
+            const artwork = getSpriteUrl(details.sprites) || species.artwork;
+
+            return {
+              ...species,
+              artwork,
+            };
+          } catch {
+            return species;
+          }
+        })
+      );
+
+      return {
+        species: speciesWithArtwork,
+      };
+    })
+  );
+
+  return hydratedStages;
+};
+
 export default function Home() {
   const [query, setQuery] = useState("");
   const [pokemon, setPokemon] = useState<Pokemon | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [evolutionStages, setEvolutionStages] = useState<EvolutionStage[] | null>(null);
 
   const spriteUrl = useMemo(() => (pokemon ? getSpriteUrl(pokemon.sprites) : null), [pokemon]);
+  const cryUrl = useMemo(() => pokemon?.cries.latest ?? null, [pokemon]);
 
   const filteredSuggestions = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -58,17 +159,57 @@ export default function Home() {
     return KANTO_POKEMON.filter(({ name }) => name.includes(normalized)).slice(0, 6);
   }, [query]);
 
+  const fetchEvolutionStages = async (speciesUrl: string, currentPokemonId: number) => {
+    try {
+      const speciesResponse = await fetch(speciesUrl);
+
+      if (!speciesResponse.ok) {
+        throw new Error("Species not found");
+      }
+
+      const speciesData = await speciesResponse.json();
+      const chainUrl: string | undefined = speciesData.evolution_chain?.url;
+
+      if (!chainUrl) {
+        return null;
+      }
+
+      const chainResponse = await fetch(chainUrl);
+
+      if (!chainResponse.ok) {
+        throw new Error("Evolution chain not found");
+      }
+
+      const chainData: { chain: EvolutionChainLink } = await chainResponse.json();
+      const baseStages = buildEvolutionStages(chainData.chain);
+      const hydratedStages = await hydrateEvolutionStages(baseStages);
+      const currentStageIndex = hydratedStages.findIndex((stage) =>
+        stage.species.some((species) => species.id === currentPokemonId)
+      );
+
+      if (currentStageIndex === -1) {
+        return [];
+      }
+
+      return hydratedStages.slice(currentStageIndex + 1);
+    } catch {
+      return null;
+    }
+  };
+
   const fetchPokemon = async (name: string) => {
     const normalized = name.trim().toLowerCase();
 
     if (!normalized) {
       setError("Enter a Pokémon name to search.");
       setPokemon(null);
+      setEvolutionStages(null);
       return;
     }
 
     setIsLoading(true);
     setError(null);
+    setEvolutionStages(null);
 
     try {
       const response = await fetch(`https://pokeapi.co/api/v2/pokemon/${normalized}`);
@@ -79,9 +220,17 @@ export default function Home() {
 
       const data: Pokemon = await response.json();
       setPokemon(data);
+
+      if (data.species?.url) {
+        const stages = await fetchEvolutionStages(data.species.url, data.id);
+        setEvolutionStages(stages ?? []);
+      } else {
+        setEvolutionStages([]);
+      }
     } catch {
       setPokemon(null);
       setError("No Pokémon found with that name. Try another search.");
+      setEvolutionStages([]);
     } finally {
       setIsLoading(false);
     }
@@ -99,7 +248,7 @@ export default function Home() {
 
   return (
     <div className="flex min-h-screen justify-center bg-white px-4 py-16 text-slate-900">
-      <main className="flex w-full max-w-3xl flex-col gap-10 rounded-3xl border-[3px] border-black bg-red-600 p-10 text-white shadow-2xl shadow-red-900/40">
+      <main className="flex w-full max-w-3xl flex-col gap-10 overflow-hidden rounded-3xl border-[3px] border-black bg-red-600 p-10 text-white shadow-2xl shadow-red-900/40">
         <section className="flex flex-col gap-3">
           <p className="text-sm font-semibold uppercase tracking-[0.2em] text-white/70">
             Pokédex Search
@@ -124,7 +273,7 @@ export default function Home() {
 
         <form
           onSubmit={handleSearch}
-          className="flex flex-col gap-4 rounded-2xl border-[3px] border-white bg-black p-6 shadow-inner shadow-red-900/40"
+          className="flex w-full flex-col gap-4 rounded-2xl border-[3px] border-white bg-black p-6 shadow-inner shadow-red-900/40"
         >
           <label className="flex flex-col gap-2 text-sm font-medium text-white">
             Pokémon name
@@ -155,7 +304,7 @@ export default function Home() {
           )}
 
           {filteredSuggestions.length > 0 && (
-            <div className="rounded-2xl border border-white/20 bg-black/80 p-4">
+            <div className="w-full rounded-2xl border border-white/20 bg-black/80 p-4">
               <p className="text-xs font-semibold uppercase tracking-[0.3em] text-white/40">
                 Suggestions
               </p>
@@ -178,7 +327,7 @@ export default function Home() {
           )}
         </form>
 
-        <section className="min-h-[220px] rounded-2xl border-[3px] border-white bg-black p-6 shadow-inner shadow-red-900/40">
+        <section className="flex w-full flex-1 flex-col overflow-hidden rounded-2xl border-[3px] border-white bg-black p-6 shadow-inner shadow-red-900/40">
           {isLoading && (
             <div className="flex h-full items-center justify-center text-white/80">
               Fetching Pokémon data...
@@ -186,7 +335,7 @@ export default function Home() {
           )}
 
           {!isLoading && !pokemon && !error && (
-            <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
+            <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center">
               <p className="text-lg font-semibold text-white">
                 Start by searching for a Pokémon.
               </p>
@@ -197,9 +346,9 @@ export default function Home() {
           )}
 
           {!isLoading && pokemon && (
-            <article className="grid gap-6 md:grid-cols-[200px_1fr] md:items-center">
+            <article className="grid w-full flex-1 content-start gap-6 md:grid-cols-[200px_1fr] md:items-start">
               {spriteUrl ? (
-                <div className="relative mx-auto h-48 w-48 overflow-hidden rounded-3xl border border-white/10 bg-slate-900/60">
+                <div className="relative h-48 w-48 overflow-hidden rounded-3xl border border-white/10 bg-slate-900/60 md:self-start">
                   <Image
                     src={spriteUrl}
                     alt={pokemon.name}
@@ -246,7 +395,81 @@ export default function Home() {
                     <dd>{formatMeasurement(pokemon.weight, 10, "kg")}</dd>
                   </div>
                 </dl>
+
+                {cryUrl && (
+                  <div className="rounded-2xl border border-white/20 bg-black/60 p-4 text-sm text-white/80 shadow-inner shadow-black/40">
+                    <p className="text-xs font-semibold uppercase tracking-[0.3em] text-white/50">
+                      Latest Cry
+                    </p>
+                    <audio
+                      controls
+                      preload="none"
+                      src={cryUrl}
+                      className="mt-3 w-full"
+                      aria-label={`Play ${pokemon.name} cry`}
+                    >
+                      Your browser does not support the audio element.
+                    </audio>
+                  </div>
+                )}
               </div>
+
+              {evolutionStages !== null && (
+                <div className="md:col-span-2">
+                  <div className="rounded-2xl border border-white/20 bg-black/60 p-4 text-sm text-white/80 shadow-inner shadow-black/40">
+                    <p className="text-xs font-semibold uppercase tracking-[0.3em] text-white/50">
+                      Evolution Chain
+                    </p>
+                    {evolutionStages.length > 0 ? (
+                      <div className="mt-4 max-h-[260px] w-full overflow-auto pb-2">
+                        <div className="flex items-start gap-6">
+                          {evolutionStages.map((stage, stageIndex) => (
+                            <Fragment key={`stage-${stageIndex}`}>
+                              <div className="flex min-w-[160px] flex-col items-center gap-4">
+                                <div className="flex flex-col items-center gap-4">
+                                  {stage.species.map((stageSpecies) => (
+                                    <button
+                                      type="button"
+                                      key={stageSpecies.id}
+                                      onClick={() => handleSuggestionSelect(stageSpecies.name)}
+                                      className="group flex w-36 flex-col items-center gap-2 rounded-2xl border border-white/15 bg-white/5 px-4 py-3 text-center text-white transition hover:border-white/40 hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
+                                    >
+                                      <div className="relative h-20 w-20 overflow-hidden rounded-xl border border-white/10 bg-black/60">
+                                        <Image
+                                          src={stageSpecies.artwork}
+                                          alt={stageSpecies.name}
+                                          fill
+                                          sizes="80px"
+                                          className="object-contain p-2 transition group-hover:scale-105"
+                                        />
+                                      </div>
+                                      <span className="text-sm font-semibold">
+                                        {getFormattedName(stageSpecies.name)}
+                                      </span>
+                                      <span className="text-xs font-mono text-white/60">
+                                        #{formatDexNumber(stageSpecies.id)}
+                                      </span>
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                              {stageIndex < evolutionStages.length - 1 && (
+                                <div className="flex items-center justify-center text-white/40">
+                                  <span className="text-3xl font-bold">→</span>
+                                </div>
+                              )}
+                            </Fragment>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="mt-4 text-sm text-white/70">
+                        There are no known evolutions for this Pokémon.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
             </article>
           )}
         </section>
@@ -254,3 +477,4 @@ export default function Home() {
     </div>
   );
 }
+
