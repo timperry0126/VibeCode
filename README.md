@@ -1,4 +1,15 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Pokémon Search
+
+**Pokémon Search** is an interactive web application that allows users to look up any Pokémon and instantly view important details about them.  
+Simply enter a Pokémon’s name or ID to discover more about them.
+
+### ✨ Features
+- 🔍 Search for any Pokémon by name or ID  
+- 🎨 Clean, user-friendly interface  
+- ⚡ Fast lookups powered by the PokéAPI  
+
+### 🎯 Purpose
+This project was created to help Pokémon fans easily explore and learn about their favorite creatures in a simple and enjoyable way.
 
 ## Getting Started
 
